@@ -149,6 +149,10 @@ MP4BoxStream.prototype.readInt32 = function() {
   return this.readAnyInt(4, true);
 }
 
+MP4BoxStream.prototype.readInt64 = function() {
+  return this.readAnyInt(8, false);
+}
+
 MP4BoxStream.prototype.readUint8Array = function(length) {
   var arr = new Uint8Array(length);
   for (var i = 0; i < length; i++) {
@@ -158,6 +162,14 @@ MP4BoxStream.prototype.readUint8Array = function(length) {
 }
 
 MP4BoxStream.prototype.readInt16Array = function(length) {
+  var arr = new Int16Array(length);
+  for (var i = 0; i < length; i++) {
+    arr[i] = this.readInt16();
+  }
+  return arr;
+}
+
+MP4BoxStream.prototype.readUint16Array = function(length) {
   var arr = new Int16Array(length);
   for (var i = 0; i < length; i++) {
     arr[i] = this.readUint16();
@@ -1479,6 +1491,19 @@ ISOFile.prototype.seek = function(time, useRap) {
 		Log.info("ISOFile", "Adjusted seek position (after checking data already in buffer): "+seek_info.offset);
 		return seek_info;
 	}
+}
+
+ISOFile.prototype.equal = function(b) {
+	var box_index = 0;
+	while (box_index < this.boxes.length && box_index < b.boxes.length) {
+		var a_box = this.boxes[box_index];
+		var b_box = b.boxes[box_index];
+		if (!BoxParser.boxEqual(a_box, b_box)) {
+			return false;
+		}
+		box_index++;
+	}
+	return true;
 }
 
 if (typeof exports !== 'undefined') {

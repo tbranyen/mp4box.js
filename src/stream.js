@@ -145,6 +145,10 @@ MP4BoxStream.prototype.readInt32 = function() {
   return this.readAnyInt(4, true);
 }
 
+MP4BoxStream.prototype.readInt64 = function() {
+  return this.readAnyInt(8, false);
+}
+
 MP4BoxStream.prototype.readUint8Array = function(length) {
   var arr = new Uint8Array(length);
   for (var i = 0; i < length; i++) {
@@ -154,6 +158,14 @@ MP4BoxStream.prototype.readUint8Array = function(length) {
 }
 
 MP4BoxStream.prototype.readInt16Array = function(length) {
+  var arr = new Int16Array(length);
+  for (var i = 0; i < length; i++) {
+    arr[i] = this.readInt16();
+  }
+  return arr;
+}
+
+MP4BoxStream.prototype.readUint16Array = function(length) {
   var arr = new Int16Array(length);
   for (var i = 0; i < length; i++) {
     arr[i] = this.readUint16();

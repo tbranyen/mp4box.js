@@ -1,272 +1,32 @@
-var mp4boxfile;
-
-var boxtree;
-var boxtable;
-var treeview_node;
-var progressbar;
-var progresslabel;
-var fileinput;
-var urlinput;
-var fancytree;
-
-var objectToLoad = null;
-var objectIsFile = false;
+var file = {};
+file.mp4boxfile = null;
+file.objectToLoad = null;
+file.objectIsFile = false;
+file.fancytree = null;
 
 Log.setLogLevel(Log.debug);
 
-var chunkSize  = 1024 * 1024; // bytes
-
-function dragenter(e) {
-	e.stopPropagation();
-	e.preventDefault();
-}
-
-function drop(e) {
-	objectIsFile = true;
-	if (!e) {
-		objectToLoad = document.getElementById('fileinput').files[0];
-	}
-	else {
-		objectToLoad = e.dataTransfer.files[0];
-	}
-	load();
-}
-
-function initialize() {
-	mp4boxfile 	   = MP4Box.createFile(false);	
-}
-
-function parseFile(file) {
-    var fileSize   = file.size;
-    var offset     = 0;
-    var self       = this; // we need a reference to the current object
-    var readBlock  = null;
- 	var startDate  = new Date();
-	
-	initialize();
-
-	mp4boxfile.onError = function(e) { 
-		console.log("mp4boxfile failed to parse data."); 
-	};
-
-    var onparsedbuffer = function(mp4boxfile, buffer) {
-    	console.log("Appending buffer with offset "+offset);
-		buffer.fileStart = offset;
-    	mp4boxfile.appendBuffer(buffer);	
-	}
-
-	var onBlockRead = function(evt) {
-        if (evt.target.error == null) {
-            onparsedbuffer(mp4boxfile, evt.target.result); // callback for handling read chunk
-            offset += evt.target.result.byteLength;
-			progressbar.progressbar({ value: Math.ceil(100*offset/fileSize) });
-        } else {
-            console.log("Read error: " + evt.target.error);
-            finalizeUI(false);
-            return;
-        }
-        if (offset >= fileSize) {
-			progressbar.progressbar({ value: 100 });
-            console.log("Done reading file ("+fileSize+ " bytes) in "+(new Date() - startDate)+" ms");
-			mp4boxfile.flush();
-            finalizeUI(true);
-            return;
-        }
-
-        readBlock(offset, chunkSize, file);
-    }
-
-    readBlock = function(_offset, length, _file) {
-        var r = new FileReader();
-        var blob = _file.slice(_offset, length + _offset);
-        r.onload = onBlockRead;
-        r.readAsArrayBuffer(blob);
-    }
-
-    readBlock(offset, chunkSize, file);
-}
-
-function httpload(url) {	
-	var downloader = new Downloader();
-	var startDate = new Date();
-	var nextStart = 0;
-
-	initialize();
-
-	downloader.setCallback(
-		function (response, end, error) { 
-			if (response) {
-				progressbar.progressbar({ value: Math.ceil(100*downloader.chunkStart/downloader.totalLength) });
-				mp4boxfile.appendBuffer(response);
-				nextStart += chunkSize;				
-			}
-			if (end) {
-				progressbar.progressbar({ value: 100 });
-	            console.log("Done reading file ("+downloader.totalLength+ " bytes) in "+(new Date() - startDate)+" ms");
-				mp4boxfile.flush();
-				finalizeUI(true);
-			} else {
-				downloader.setChunkStart(nextStart); 
-			}
-			if (error) {
-				progresslabel.text("Download error!")
-				finalizeUI(false);
-			}
-		}
-	);
-	downloader.setInterval(10);
-	downloader.setChunkSize(chunkSize);
-	downloader.setUrl(url);
-	downloader.start();	
-}
-
-function load() {
-	$("#LoadButton").button( "disable" );
-	if (objectIsFile) {
-		parseFile(objectToLoad);
-	} else {
-		httpload(objectToLoad);
-	}
-}
-
-function generateBoxTable(box, excluded_fields, additional_props, no_header) {
-	var prop;
-	var html = '<table>';
-	if (!no_header) {
-		html += '<thead>';
-		html += '<tr>';
-		html += '<th>';
-		html += 'Property name';
-		html += '</th>';
-		html += '<th>';
-		html += 'Property value';
-		html += '</th>';
-		html += '</tr>';
-		html += '</thead>';
-	}
-	html += '<tbody>';
-	for (prop in box) {
-		if (["hdr_size", "boxes", "subBoxNames", "entries", "samples", "references", "items", "item_infos", "extents", "associations", "esd", "descs", "levels", "subsegments"].indexOf(prop) > -1) {
-			continue;
-		} else if (excluded_fields && excluded_fields.indexOf(prop) > -1) {
-			continue;
-		} else if (box[prop] instanceof BoxParser.Box) {
-			continue;
-		} else if (typeof box[prop] === "undefined") {
-			continue;
-		} else if (typeof box[prop] === "function") {
-			continue;
-		} else if (box.subBoxNames && box.subBoxNames.indexOf(prop.slice(0,4)) > -1) {
-			continue;
-		} else {
-			html += '<tr>';
-			html += '<td><code>';
-			html += prop;
-			html += '</code></td>';
-			html += '<td><code>';
-			if (prop === "data") {
-				for (var i = 0; i < box[prop].length; i++) {
-					var j = box[prop][i];
-					var hex = j.toString(16);
-					html += (hex.length === 1 ? "0"+hex : hex);
-					if (i%4 === 3) html += ' ';
-				}
-			} else {
-				html += box[prop];
-			}
-			html += '</code></td>';
-			html += '</tr>';
-		}
-	}
-	if (additional_props) {
-		for (prop in additional_props) {
-			html += '<tr>';
-			html += '<td><code>';
-			html += prop;
-			html += '</code></td>';
-			html += '<td><code>';
-			html += additional_props[prop];
-			html += '</code></td>';
-			html += '</tr>';
-		}
-	}
-	html += '</tbody>';
-	html += '</table>';
-	return html;
-}
-
-function getFancyTreeDataFromDescChildren(descs) {
-	var array = [];
-	for (var i = 0; i < descs.length; i++) {
-		fancytree_node = getFancyTreeDataFromDesc(descs[i])[0];
-		array.push(fancytree_node);
-	}
-	return array;
-}
-
-function getFancyTreeDataFromDesc(desc) {
-	var array = [];
-	var fancytree_node = {};
-	array.push(fancytree_node);
-	var parser = new MPEG4DescriptorParser();
-	fancytree_node.title = parser.getDescriptorName(desc.tag);
-	fancytree_node.data = { 'box': desc };
-	fancytree_node.folder = true;
-	fancytree_node.children = getFancyTreeDataFromDescChildren(desc.descs);
-	return array;
-}
-
-function getFancyTreeDataFromBoxes(boxes) {
-	var array = [];
-	for (var i = 0; i < boxes.length; i++) {
-		var box = boxes[i];
-		var fancytree_node = {};
-		array.push(fancytree_node);
-		fancytree_node.title = box.type || i;
-		fancytree_node.data = { 'box': box };
-		var child_prop_names = [ "boxes", "entries", "references", "subsamples",
-								 "items", "item_infos", "extents", "associations", "subsegments", "ranges", "seekLists", "seekPoints", "esd", "levels"];
-		for (var j = 0; j < child_prop_names.length; j++) {
-			var name = child_prop_names[j];
-			if (box[name]) {
-				fancytree_node.folder = true;
-				if (name === "esd") {
-					fancytree_node.children = getFancyTreeDataFromDesc(box[name]);
-				} else {
-					fancytree_node.children = getFancyTreeDataFromBoxes(box[name]);
-				}
-			}
-		}
-	}
-	return array;
-}
-
-function createBoxTreeView(treeboxes) {
-	fancytree.reload(treeboxes);
-	fancytree = boxtree.fancytree('getTree');
-}
-
 function createBoxView() {
-	var treeboxes = getFancyTreeDataFromBoxes(mp4boxfile.boxes);
-	createBoxTreeView(treeboxes);
+	var treeboxes = getFancyTreeDataFromBoxes(file.mp4boxfile.boxes);
+	file.fancytree.reload(treeboxes);
 	var boxnodes = ({ title: "file", children: treeboxes });
 	createBoxTreeMapSVG(boxnodes);
 	createBoxPartition(boxnodes);
 }
 
 function resetBoxView() {
-	fancytree.reload([]);
+	file.fancytree.reload([]);
 	d3.select("#boxmapview").html('');
 	d3.select("#boxpartitionview").html('');
 }
 
-function finalizeUI(success) {
-	$("#LoadButton").button("enable");
+function finalizeAnalyzerUI(fileobj, loadbutton, success) {
+	loadbutton.button("enable");
 	if (success) {
 		createBoxView();
-		buildItemTable(mp4boxfile.items);
+		buildItemTable(fileobj.mp4boxfile.items);
 		buildSampleView();
-		displayMovieInfo(mp4boxfile.getInfo(), document.getElementById("movieview"), false);
+		displayMovieInfo(fileobj.mp4boxfile.getInfo(), document.getElementById("movieview"), false);
 	} else {
 		resetBoxView();
 		$("#itemview").html('');
@@ -353,12 +113,12 @@ function buildSampleTrackView(info, trackSelector, track_index) {
 			}
 
 			if ($("#samplegraph").is(':visible')) {
-			 	graph.data = mp4boxfile.getTrackSamplesInfo(info.tracks[track_index].id).slice(trackSelector.startSample, trackSelector.endSample);
+			 	graph.data = file.mp4boxfile.getTrackSamplesInfo(info.tracks[track_index].id).slice(trackSelector.startSample, trackSelector.endSample);
 				graph.update();
 			}
 
 			if ($("#sampletimeline").is(':visible')) {
-			 	timeline.data = mp4boxfile.getTrackSamplesInfo(info.tracks[track_index].id).slice(trackSelector.startSample, trackSelector.endSample);
+			 	timeline.data = file.mp4boxfile.getTrackSamplesInfo(info.tracks[track_index].id).slice(trackSelector.startSample, trackSelector.endSample);
 				timeline.update();
 			}
 
@@ -374,18 +134,18 @@ function buildSampleTrackView(info, trackSelector, track_index) {
   	buildSampleTableInfo(info.tracks[track_index].id, trackSelector.startSample, trackSelector.endSample);
 
  	graph = new SampleGraph();
- 	graph.data = mp4boxfile.getTrackSamplesInfo(info.tracks[track_index].id).slice(trackSelector.startSample, trackSelector.endSample);
+ 	graph.data = file.mp4boxfile.getTrackSamplesInfo(info.tracks[track_index].id).slice(trackSelector.startSample, trackSelector.endSample);
 	graph.update();
 
  	timeline = new SampleTimeline();
- 	timeline.data = mp4boxfile.getTrackSamplesInfo(info.tracks[track_index].id).slice(trackSelector.startSample, trackSelector.endSample);
+ 	timeline.data = file.mp4boxfile.getTrackSamplesInfo(info.tracks[track_index].id).slice(trackSelector.startSample, trackSelector.endSample);
 	timeline.update();
 
 	buildSampleMap(trackSelector.startSample, trackSelector.endSample);
 }
 
 function buildSampleView() {
-	var info = mp4boxfile.getInfo();
+	var info = file.mp4boxfile.getInfo();
 	if (info.tracks) {
 		$("#trackinfo").addClass("ui-widget ui-widget-content ui-corner-all");
 		$("#sample-range-value").addClass("ui-widget ui-widget-content ui-corner-all");
@@ -432,7 +192,7 @@ function buildSampleTableInfo(track_id, start, end) {
 		return html;
 	}
 
-	trak = mp4boxfile.getTrackById(track_id);
+	trak = file.mp4boxfile.getTrackById(track_id);
 
 	html = "<div style='margin-top: 10px;margin-bottom: 10px;'>Show sample properties: ";
 	for (prop in properties) {
@@ -447,7 +207,7 @@ function buildSampleTableInfo(track_id, start, end) {
 		for (j in trak.sample_groups_info) {
 			sample_group_info = trak.sample_groups_info[j];
 			sample_group_name = sample_group_info.grouping_type.trim()+"/"+sample_group_info.grouping_type_parameter;
-			html += getShowHidePropertyCheckbox(sample_group_name);			
+			html += getShowHidePropertyCheckbox(sample_group_name);
 		}
 	}
 	html += "</div>";
@@ -473,7 +233,7 @@ function buildSampleTableInfo(track_id, start, end) {
 	html += "</thead>";
 	html += "<tbody>";
 
-	samples = mp4boxfile.getTrackSamplesInfo(track_id);
+	samples = file.mp4boxfile.getTrackSamplesInfo(track_id);
 	if (samples.length < end) end = samples.length;
 	for (i = start; i < end; i++) {
 		sample = samples[i];
@@ -515,84 +275,13 @@ function buildSampleTableInfo(track_id, start, end) {
 }
 
 window.onload = function () {
-	$("#tabs-1").hide();
-	$("#tabs-2").hide();
-	var loadselector = $("#input_type").selectmenu({
-		width: 150,
-		change: function (e) {
-			switch(e.target.selectedOptions[0].value) {
-				case "File":
-					$("#tabs-1").show();
-					$("#tabs-2").hide();
-					$("#tabs-3").hide();
-					break;
-				case "URL":
-					$("#tabs-1").hide();
-					$("#tabs-2").show();
-					$("#tabs-3").hide();
-					break;
-				case "Example":
-					$("#tabs-1").hide();
-					$("#tabs-2").hide();
-					$("#tabs-3").show();
-					break;
-			}
-		}
-	});
-	
 
-	boxtree = $('#boxtree');
-	boxtable = $('#boxtable');
-	progressbar = $('#progressbar');
-	progresslabel = $('#progress-label');
-	fileinput = $('#fileinput');
-	fileinput.width(500);
-	urlinput = $('#urlinput');	
-	urlinput[0].onchange = function(e) { 
-		objectToLoad = urlinput.val(); 
-		objectIsFile = false;
-		console.log(objectIsFile, objectToLoad);
-	}	
-	urlinput.width(500);
-	urlinput.addClass("ui-widget ui-widget-content ui-corner-all");
-	urlSelector = $('#urlSelector');
-	urlSelector.selectmenu({
-		width: 500,
-		change: function(e) {
-			objectIsFile = false;
-			objectToLoad = urlSelector.find(":selected").val();
-		}
-	});
-	progressbar.progressbar({ 
-		value: 0, 
-		change: function() {
-           progresslabel.text( 
-              progressbar.progressbar( "value" ) + "%" );
-        },
-        complete: function() {
-           progresslabel.text( "Loading Completed!" );
-        }
-    });
-	fileinput.button();
+	createLoadBar($('#menubar'), "File", "file", file, finalizeAnalyzerUI);
 
-	var fancytree_options = {};
-	fancytree_options.autoScroll = true;
-	fancytree_options.source = [];
-	fancytree_options.activate = function(event, data) {
-		var node = data.node;
-		if( !$.isEmptyObject(node.data) ){
-			boxtable.html(generateBoxTable(node.data.box));
-		}
-	};
-	boxtree.fancytree(fancytree_options);
-	fancytree = boxtree.fancytree('getTree');
+	createFancyTree($('#boxtreeview'), file);
 
-	boxtable.html(generateBoxTable({}));
-
-	//$("#tabs").tabs();
 	$("#resulttabs").tabs();
 	$("#boxview").tabs();
-	//$("#sampleviewtabs").tabs();
 	$("#sampleviewselector").selectmenu({
 		width: 200,
 		change: function(e) {
@@ -629,22 +318,15 @@ window.onload = function () {
 	$("#samplemap").hide();
 	$("#sampletimeline").hide();
 
-	$("#LoadButton").button();
-
-	buildUrlList(urlSelector[0], true);
-	objectToLoad = urlSelector.find(":selected").val();
-	urlSelector.val(objectToLoad);
-	urlSelector.selectmenu("refresh");
-
 	if (window.location.search) {
-		objectToLoad = window.location.search.substring(1);
+		file.objectToLoad = window.location.search.substring(1);
 		load();
 	}
 }
 
 function displayItemContent(id) {
 	var string;
-	var item = mp4boxfile.getItem(id);	
+	var item = file.mp4boxfile.getItem(id);
 	console.log("Item "+id+", content:");
 	switch (item.content_type) {
 		case "text/plain":
@@ -658,7 +340,7 @@ function displayItemContent(id) {
 			console.log("Cannot display binary data");
 
 	}
-	//mp4boxfile.releaseItem(id);
+	//file.mp4boxfile.releaseItem(id);
 }
 
 function createBoxTreeMapSVG(boxnodes) {
@@ -766,7 +448,7 @@ function createBoxPartition(boxnodes) {
 	select.append("option").attr("value", "size").text("size");
 	select.append("option").attr("value", "count").text("number of children");
 	selectDiv.append("span").text(" of the box");
-	
+
 	var w = 1120,
     	h = 600,
     	x = d3.scale.linear().range([0, w]),
@@ -852,15 +534,15 @@ function createBoxPartition(boxnodes) {
 }
 
 function getAllSamples(start, end) {
-	var info = mp4boxfile.getInfo();
+	var info = file.mp4boxfile.getInfo();
 	var all = [];
 	var samples, s;
 	var i, j;
 
 	for (i = 0; i < info.tracks.length; i++) {
-		samples = mp4boxfile.getTrackSamplesInfo(info.tracks[i].id);
+		samples = file.mp4boxfile.getTrackSamplesInfo(info.tracks[i].id);
 		for (j = start; j < (samples.length > end ? end : samples.length); j++) {
-			s = samples[j];  
+			s = samples[j];
 			s.track = info.tracks[i].id;
 			s.time = Math.floor((s.cts / s.timescale)*1000);
 			s.position = s.offset;
@@ -892,7 +574,7 @@ function buildSampleMap(start, end) {
 		    .style("width", "100%")
 		  .append("svg:svg")
 		    .attr("viewBox", "0 0 "+w+" "+h);
-    
+
     for (i = 0; i < samples.length; i++) {
     	s = samples[i];
     	scale += s.size;
@@ -903,8 +585,8 @@ function buildSampleMap(start, end) {
     function addSample(s, v) {
     	var sample_tooltip = 'Sample Information:\n';
     	/*for (var i in s) {
-    		sample_tooltip += '  '+i+':\t'+s[i]+'\n';	
-    	}*/    	
+    		sample_tooltip += '  '+i+':\t'+s[i]+'\n';
+    	}*/
     	sample_tooltip += '  Track ID:\t'+s.track+'\n';
     	sample_tooltip += '  Number:\t'+s.number+'\n';
     	sample_tooltip += '  Size:\t\t'+s.size+'\n';
@@ -926,8 +608,8 @@ function buildSampleMap(start, end) {
 	    	.attr("x", xpos+v/2)
 	    	.attr("y", ypos+lineheight/2)
 	    	.text(s.time)
-		    .style("opacity", function(d) { 
-		    	var tw = this.getComputedTextLength(); return v > tw ? 1 : 0; 
+		    .style("opacity", function(d) {
+		    	var tw = this.getComputedTextLength(); return v > tw ? 1 : 0;
 		    });
     }
 
@@ -1020,7 +702,7 @@ function SampleTimeline() {
     var height = this.height = window.innerHeight - margin.top - margin.bottom;
 
 	var div = d3.select("#sampletimeline");
-	div.html('');	
+	div.html('');
 	this.svg = div.append("svg")
 		.attr("width", "100%")
 		.attr("height", "100%")
