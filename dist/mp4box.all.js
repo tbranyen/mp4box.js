@@ -3562,7 +3562,20 @@ BoxParser.createFullBoxCtor("pssh", function(stream) {
 	}
 });
 
-// file:src/parsing/rtp.js
+// file:src/parsing/qt/clef.js
+BoxParser.createFullBoxCtor("clef", function(stream) {
+	this.width = stream.readUint32();
+	this.height = stream.readUint32();
+});// file:src/parsing/qt/enof.js
+BoxParser.createFullBoxCtor("enof", function(stream) {
+	this.width = stream.readUint32();
+	this.height = stream.readUint32();
+});// file:src/parsing/qt/prof.js
+BoxParser.createFullBoxCtor("prof", function(stream) {
+	this.width = stream.readUint32();
+	this.height = stream.readUint32();
+});// file:src/parsing/qt/tapt.js
+BoxParser.createContainerBoxCtor("tapt", null, [ "clef", "prof", "enof"]);// file:src/parsing/rtp.js
 BoxParser.createBoxCtor("rtp ", function(stream) {
 	this.descriptionformat = stream.readString(4);
 	this.sdptext = stream.readString(this.size - this.hdr_size - 4);
