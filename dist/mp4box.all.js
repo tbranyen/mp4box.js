@@ -3311,17 +3311,14 @@ BoxParser.createFullBoxCtor("ipma", function(stream) {
 		item_assoc.props = [];
 		for (j = 0; j < association_count; j++) {
 			var tmp = stream.readUint8();
-			var p = [];
+			var p = {};
 			item_assoc.props.push(p);
-			var essential = (tmp & 0x80) >> 7;
-			var property_index;
+			p.essential = ((tmp & 0x80) >> 7) === 1;
 			if (this.flags & 0x1) {
-				property_index = (tmp & 0x7F) << 8 | stream.readUint8();
+				p.property_index = (tmp & 0x7F) << 8 | stream.readUint8();
 			} else {
-				property_index = (tmp & 0x7F);
+				p.property_index = (tmp & 0x7F);
 			}
-			p.push(property_index);
-			p.push(essential === 1);
 		}
 	}
 });
@@ -7442,6 +7439,27 @@ ISOFile.prototype.flattenItemInfo = function() {
 			var ref = meta.iref.references[i];
 			for (j=0; j<ref.references.length; j++) {
 				items[ref.from_item_ID].ref_to.push({type: ref.type, id: ref.references[j]});
+			}
+		}
+	}
+	if (meta.iprp) {
+		for (var k = 0; k < meta.iprp.ipmas.length; k++) {
+			var ipma = meta.iprp.ipmas[k];
+			for (i = 0; i < ipma.associations.length; i++) {
+				var association = ipma.associations[i];
+				item = items[association.id];
+				if (item.properties === undefined) {
+					item.properties = {};
+					item.properties.boxes = [];
+				}
+				for (j = 0; j < association.props.length; j++) {
+					var propEntry = association.props[j];
+					if (propEntry.property_index > 0) {
+						var propbox = meta.iprp.ipco.boxes[propEntry.property_index-1];
+						item.properties[propbox.type] = propbox;
+						item.properties.boxes.push(propbox);
+					}
+				}
 			}
 		}
 	}
