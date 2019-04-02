@@ -62,8 +62,8 @@ ISOFile.prototype.setSegmentOptions = function(id, user, options) {
 		fragTrack.nb_samples = 1000;
 		fragTrack.rapAlignement = true;
 		if (options) {
-			if (options.nbSamples) fragTrack.nb_samples = options.nbSamples;
-			if (options.rapAlignement) fragTrack.rapAlignement = options.rapAlignement;
+			if ('nbSamples' in options) fragTrack.nb_samples = options.nbSamples;
+			if ('rapAlignement' in options) fragTrack.rapAlignement = options.rapAlignement;
 		}
 	}
 }
@@ -575,7 +575,7 @@ ISOFile.prototype.seekTrack = function(time, useRap, trak) {
 		} else if (sample.cts > time * sample.timescale) {
 			seek_sample_num = j-1;
 			break;
-		} 
+		}
 		if (useRap && sample.is_sync) {
 			rap_seek_sample_num = j;
 		}
